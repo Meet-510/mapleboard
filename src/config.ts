@@ -4,6 +4,13 @@ export type WorkdayCompany = {
   site: string;
 };
 
+export type CompanySource = {
+  /** URL slug on the source's public API (case-sensitive). */
+  slug: string;
+  /** Display name for the email. Falls back to `slug` if omitted. */
+  name?: string;
+};
+
 export const config = {
   recipientEmail: "mistrymeet941@gmail.com",
 
@@ -149,16 +156,38 @@ export const config = {
     "CGI",
   ],
 
-  // Per-source company slugs. To discover more:
+  // Per-source companies. Each entry is { slug, name? }.
   //   Greenhouse:  visit boards.greenhouse.io/<slug> — if it loads, the slug works.
   //   Lever:       visit jobs.lever.co/<slug> — same test.
   //   Ashby:       visit jobs.ashbyhq.com/<slug>.
-  // All values below were probed live and returned 200 at project setup time.
-  greenhouseCompanies: ["hootsuite", "ritual", "flipp"],
+  // Slugs below were probed live and returned 200 at project setup time.
+  greenhouseCompanies: [
+    { slug: "hootsuite", name: "Hootsuite" },
+    { slug: "ritual", name: "Ritual" },
+    { slug: "flipp", name: "Flipp" },
+  ] as CompanySource[],
 
-  leverCompanies: ["wealthsimple", "mistplay", "plusgrade"],
+  leverCompanies: [
+    { slug: "wealthsimple", name: "Wealthsimple" },
+    { slug: "mistplay", name: "Mistplay" },
+    { slug: "plusgrade", name: "Plusgrade" },
+  ] as CompanySource[],
 
-  ashbyCompanies: [] as string[],
+  ashbyCompanies: [
+    { slug: "neofinancial", name: "Neo Financial" },
+  ] as CompanySource[],
+
+  /**
+   * Priority company — checked on every run, and its status is included in
+   * every email (even the "no jobs today" one). Must reference a company that
+   * appears in one of the source lists above so we can fetch it directly.
+   */
+  priorityCompany: {
+    name: "Neo Financial",
+    // Where to fetch the raw board for the status count.
+    source: "ashby" as const,
+    slug: "neofinancial",
+  },
 
   // Workday tenants — each site is bespoke. Populate as owner finds them.
   workdayCompanies: [] as WorkdayCompany[],

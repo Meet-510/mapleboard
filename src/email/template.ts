@@ -1,4 +1,5 @@
 import type { NormalizedJob, LocationTier, EmploymentType } from "../types.js";
+import type { PriorityStatus } from "../pipeline/priority.js";
 
 function esc(s: string): string {
   return s
@@ -113,7 +114,11 @@ export type Rendered = {
   text: string;
 };
 
-export function renderEmail(jobs: NormalizedJob[], now: Date = new Date()): Rendered {
+export function renderEmail(
+  jobs: NormalizedJob[],
+  now: Date = new Date(),
+  priority?: PriorityStatus
+): Rendered {
   const dateStr = now.toISOString().slice(0, 10);
   const buckets: Record<LocationTier, NormalizedJob[]> = {
     alberta: jobs.filter((j) => j.locationTier === "alberta"),
@@ -123,12 +128,12 @@ export function renderEmail(jobs: NormalizedJob[], now: Date = new Date()): Rend
   const monitored = jobs.filter((j) => j.isMonitoredCompany);
 
   if (jobs.length === 0) {
-    return renderEmpty(dateStr, now);
+    return renderEmpty(dateStr, now, priority);
   }
 
   const summary = `
     <div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:20px;text-align:center;color:#334155;">
-      <div style="font-size:15px;">Today's job scan found <strong>${jobs.length}</strong> new opportunities.</div>
+      <div style="font-size:15px;">This scan found <strong>${jobs.length}</strong> new opportunities.</div>
       <div style="margin-top:6px;font-size:13px;color:#64748b;">
         Alberta: <strong>${buckets.alberta.length}</strong> ·
         Rest of Canada: <strong>${buckets.canada.length}</strong> ·
@@ -143,6 +148,7 @@ export function renderEmail(jobs: NormalizedJob[], now: Date = new Date()): Rend
         <h1 style="margin:0;color:#dc2626;font-size:24px;">MapleBoard</h1>
         <div style="color:#64748b;font-size:13px;">Junior Developer Jobs · Canada · ${esc(dateStr)}</div>
       </div>
+      ${priorityBanner(priority)}
       ${summary}
       ${section("Alberta", buckets.alberta, now)}
       ${section("Rest of Canada", buckets.canada, now)}
@@ -153,12 +159,12 @@ export function renderEmail(jobs: NormalizedJob[], now: Date = new Date()): Rend
           : ""
       }
       <div style="text-align:center;margin-top:32px;color:#94a3b8;font-size:11px;">
-        Sent by MapleBoard · Sources: Greenhouse, Lever, Ashby, Workday, Adzuna, Job Bank Canada
+        Sent by MapleBoard · Sources: Greenhouse, Lever, Ashby, Workday, Adzuna
       </div>
     </div>
   `.trim();
 
-  const text = renderText(jobs, buckets, dateStr, now);
+  const text = renderText(jobs, buckets, dateStr, now, priority);
 
   return {
     subject: `Daily Junior Developer Jobs — Canada — ${dateStr} (${jobs.length})`,
@@ -167,19 +173,51 @@ export function renderEmail(jobs: NormalizedJob[], now: Date = new Date()): Rend
   };
 }
 
+function priorityBanner(p?: PriorityStatus): string {
+  if (!p) return "";
+  // Colour reflects state: red on fetch failure, green on new roles, amber on
+  // "openings but nothing junior", grey for the quiet-day baseline.
+  const bg = !p.fetchOk
+    ? "#fee2e2"
+    : p.newInThisEmail > 0
+      ? "#dcfce7"
+      : (p.totalOpenings ?? 0) > 0
+        ? "#fef3c7"
+        : "#f1f5f9";
+  const border = !p.fetchOk
+    ? "#dc2626"
+    : p.newInThisEmail > 0
+      ? "#16a34a"
+      : (p.totalOpenings ?? 0) > 0
+        ? "#f59e0b"
+        : "#94a3b8";
+  return `
+    <div style="background:${bg};border-left:4px solid ${border};padding:12px 16px;border-radius:6px;margin-bottom:16px;">
+      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Priority company</div>
+      <div style="font-size:14px;color:#0f172a;margin-top:2px;">${esc(p.message)}</div>
+    </div>
+  `.trim();
+}
+
 function renderText(
   jobs: NormalizedJob[],
   buckets: Record<LocationTier, NormalizedJob[]>,
   dateStr: string,
-  now: Date
+  now: Date,
+  priority?: PriorityStatus
 ): string {
   const lines: string[] = [
     `MapleBoard — Daily Junior Developer Jobs — Canada — ${dateStr}`,
     ``,
+  ];
+  if (priority) {
+    lines.push(`Priority: ${priority.message}`, ``);
+  }
+  lines.push(
     `Found ${jobs.length} new opportunities.`,
     `Alberta: ${buckets.alberta.length} | Rest of Canada: ${buckets.canada.length} | Remote: ${buckets.remote.length}`,
-    ``,
-  ];
+    ``
+  );
   const addSection = (title: string, rows: NormalizedJob[]) => {
     if (rows.length === 0) return;
     lines.push(`--- ${title.toUpperCase()} (${rows.length}) ---`);
@@ -202,22 +240,26 @@ function renderText(
   return lines.filter((l) => l !== undefined).join("\n");
 }
 
-function renderEmpty(dateStr: string, now: Date): Rendered {
+function renderEmpty(dateStr: string, now: Date, priority?: PriorityStatus): Rendered {
   const html = `
-    <div style="max-width:640px;margin:0 auto;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;text-align:center;">
-      <h1 style="color:#dc2626;margin:0;font-size:22px;">MapleBoard</h1>
-      <div style="color:#64748b;font-size:13px;margin-top:4px;">${esc(dateStr)}</div>
-      <div style="margin-top:24px;color:#334155;font-size:15px;">
-        No new junior developer jobs matched today.
+    <div style="max-width:640px;margin:0 auto;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#f1f5f9;">
+      <div style="text-align:center;">
+        <h1 style="color:#dc2626;margin:0;font-size:22px;">MapleBoard</h1>
+        <div style="color:#64748b;font-size:13px;margin-top:4px;">${esc(dateStr)}</div>
       </div>
-      <div style="margin-top:8px;color:#94a3b8;font-size:12px;">
+      ${priorityBanner(priority)}
+      <div style="text-align:center;margin-top:24px;color:#334155;font-size:15px;">
+        No new junior developer jobs matched this scan.
+      </div>
+      <div style="text-align:center;margin-top:8px;color:#94a3b8;font-size:12px;">
         The scan ran successfully — sources returned nothing new in the last 24–48h window.
       </div>
     </div>
   `.trim();
+  const priorityLine = priority ? `Priority: ${priority.message}\n\n` : "";
   return {
     subject: `Daily Junior Developer Jobs — Canada — ${dateStr} (no new jobs)`,
     html,
-    text: `MapleBoard — ${dateStr}\n\nNo new junior developer jobs matched today. The scan ran successfully — sources returned nothing new in the last 24–48h window.\n\n(Now: ${now.toISOString()})`,
+    text: `MapleBoard — ${dateStr}\n\n${priorityLine}No new junior developer jobs matched this scan. Sources returned nothing new in the last 24–48h window.\n\n(Now: ${now.toISOString()})`,
   };
 }

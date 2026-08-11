@@ -30,15 +30,16 @@ export async function fetchAshby(): Promise<RawJob[]> {
   const results: RawJob[] = [];
 
   await Promise.all(
-    config.ashbyCompanies.map(async (slug) => {
-      const url = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}`;
+    config.ashbyCompanies.map(async (co) => {
+      const displayName = co.name ?? co.slug;
+      const url = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(co.slug)}`;
       try {
         const data = await fetchJson<AshbyResponse>(url);
         for (const j of data.jobs ?? []) {
           results.push({
             source: "ashby",
             sourceId: j.id,
-            company: slug,
+            company: displayName,
             title: j.title,
             location: j.location ?? "",
             url: j.jobUrl ?? "",
@@ -47,9 +48,9 @@ export async function fetchAshby(): Promise<RawJob[]> {
             employmentType: mapAshbyEmployment(j.employmentType),
           });
         }
-        log.info(`ashby:${slug} fetched`, { count: (data.jobs ?? []).length });
+        log.info(`ashby:${co.slug} fetched`, { count: (data.jobs ?? []).length });
       } catch (err) {
-        log.warn(`ashby:${slug} failed`, { error: String(err) });
+        log.warn(`ashby:${co.slug} failed`, { error: String(err) });
       }
     })
   );

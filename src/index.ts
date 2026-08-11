@@ -6,6 +6,7 @@ import { applyFreshness } from "./pipeline/freshness.js";
 import { excludeUnwanted } from "./pipeline/filter.js";
 import { scoreAll } from "./pipeline/score.js";
 import { verifyUrls } from "./pipeline/verify-url.js";
+import { checkPriorityCompany } from "./pipeline/priority.js";
 import { JobDb } from "./db/client.js";
 import { renderEmail } from "./email/template.js";
 import { sendEmail } from "./email/send.js";
@@ -92,8 +93,18 @@ async function main(): Promise<number> {
     log.info("capped by maxJobs", { total: sorted.length, sent: capped.length });
   }
 
-  // 10. Render + send
-  const rendered = renderEmail(capped);
+  // 10. Priority-company check (always runs, even on empty scans)
+  const priority = await checkPriorityCompany(kept, capped);
+  log.info("priority status", {
+    company: priority.companyName,
+    fetchOk: priority.fetchOk,
+    total: priority.totalOpenings,
+    matched: priority.matchedFilter,
+    new: priority.newInThisEmail,
+  });
+
+  // 11. Render + send
+  const rendered = renderEmail(capped, new Date(), priority);
   log.info("email rendered", { subject: rendered.subject, count: capped.length });
 
   const sendResult = await sendEmail(rendered, { dryRun });
@@ -108,7 +119,7 @@ async function main(): Promise<number> {
     log.info("email sent", { id: (sendResult as { id: string }).id });
   }
 
-  // 11. Persist (only after a real send — a dry-run must not poison history)
+  // 12. Persist (only after a real send — a dry-run must not poison history)
   if (!dryRun && capped.length > 0) {
     db.markEmailed(capped, new Date().toISOString());
     log.info("history updated", { newRows: capped.length });

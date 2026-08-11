@@ -19,9 +19,10 @@ export async function fetchGreenhouse(): Promise<RawJob[]> {
   const results: RawJob[] = [];
 
   await Promise.all(
-    config.greenhouseCompanies.map(async (slug) => {
+    config.greenhouseCompanies.map(async (co) => {
+      const displayName = co.name ?? co.slug;
       const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(
-        slug
+        co.slug
       )}/jobs?content=true`;
       try {
         const data = await fetchJson<GhResponse>(url);
@@ -29,7 +30,7 @@ export async function fetchGreenhouse(): Promise<RawJob[]> {
           results.push({
             source: "greenhouse",
             sourceId: String(j.id),
-            company: slug,
+            company: displayName,
             title: j.title,
             location: j.location?.name ?? "",
             url: j.absolute_url,
@@ -37,9 +38,9 @@ export async function fetchGreenhouse(): Promise<RawJob[]> {
             datePosted: j.updated_at,
           });
         }
-        log.info(`greenhouse:${slug} fetched`, { count: (data.jobs ?? []).length });
+        log.info(`greenhouse:${co.slug} fetched`, { count: (data.jobs ?? []).length });
       } catch (err) {
-        log.warn(`greenhouse:${slug} failed`, { error: String(err) });
+        log.warn(`greenhouse:${co.slug} failed`, { error: String(err) });
       }
     })
   );

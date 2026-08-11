@@ -31,15 +31,16 @@ export async function fetchLever(): Promise<RawJob[]> {
   const results: RawJob[] = [];
 
   await Promise.all(
-    config.leverCompanies.map(async (slug) => {
-      const url = `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json`;
+    config.leverCompanies.map(async (co) => {
+      const displayName = co.name ?? co.slug;
+      const url = `https://api.lever.co/v0/postings/${encodeURIComponent(co.slug)}?mode=json`;
       try {
         const postings = await fetchJson<LeverPosting[]>(url);
         for (const p of postings) {
           results.push({
             source: "lever",
             sourceId: p.id,
-            company: slug,
+            company: displayName,
             title: p.text,
             location: p.categories?.location ?? "",
             url: p.hostedUrl,
@@ -48,9 +49,9 @@ export async function fetchLever(): Promise<RawJob[]> {
             employmentType: mapCommitment(p.categories?.commitment),
           });
         }
-        log.info(`lever:${slug} fetched`, { count: postings.length });
+        log.info(`lever:${co.slug} fetched`, { count: postings.length });
       } catch (err) {
-        log.warn(`lever:${slug} failed`, { error: String(err) });
+        log.warn(`lever:${co.slug} failed`, { error: String(err) });
       }
     })
   );
