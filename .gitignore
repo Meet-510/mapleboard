@@ -141,3 +141,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# SQLite WAL/shared-memory side files — we commit mapleboard.db but not these.
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal

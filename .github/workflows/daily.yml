@@ -1,0 +1,49 @@
+name: Daily Job Alert
+
+on:
+  schedule:
+    # 13:00 UTC daily.
+    # - Summer (MDT, UTC-6): arrives 07:00 local.
+    # - Winter (MST, UTC-7): arrives 06:00 local.
+    # We accept the 1h drift to keep the workflow simple.
+    - cron: "0 13 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: mapleboard-daily
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run daily job scan
+        run: npm run daily
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+
+      - name: Commit updated history
+        run: |
+          git config user.name  "mapleboard-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/mapleboard.db
+          if git diff --staged --quiet; then
+            echo "No history changes to commit."
+          else
+            git commit -m "chore: update job history $(date -u +%F)"
+            git push
+          fi

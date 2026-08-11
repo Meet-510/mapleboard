@@ -1,0 +1,28 @@
+{
+  "name": "mapleboard",
+  "version": "0.1.0",
+  "description": "Daily junior software developer job alerts for Canada, Alberta-first.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "daily": "tsx --experimental-sqlite --env-file-if-exists=.env src/index.ts",
+    "test-once": "tsx --experimental-sqlite --env-file-if-exists=.env src/index.ts --dry-run=false",
+    "dry-run": "tsx --experimental-sqlite --env-file-if-exists=.env src/index.ts --dry-run=true",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "resend": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
