@@ -18,7 +18,7 @@ function job(overrides: Partial<NormalizedJob>): NormalizedJob {
     technologies: [],
     matchScore: 0,
     scoreReasons: [],
-    isMonitoredCompany: false,
+    section: "general",
     fallbackWindow: false,
     ...overrides,
   };
@@ -32,10 +32,34 @@ describe("isExcluded", () => {
     expect(isExcluded(job({ title: "Lead Developer" }))).toBe(true);
   });
 
-  it("keeps junior/entry titles", () => {
+  it("keeps titles with a junior signal", () => {
     expect(isExcluded(job({ title: "Junior Software Developer" }))).toBe(false);
     expect(isExcluded(job({ title: "Software Engineer I" }))).toBe(false);
-    expect(isExcluded(job({ title: "Software Developer" }))).toBe(false);
+    expect(isExcluded(job({ title: "Associate Software Developer" }))).toBe(false);
+    expect(isExcluded(job({ title: "Software Developer - New Grad" }))).toBe(false);
+  });
+
+  it("drops plain 'Software Developer' with no junior signal", () => {
+    // Strict junior gate: ambiguous titles are dropped unless the description
+    // provides the junior signal.
+    expect(isExcluded(job({ title: "Software Developer" }))).toBe(true);
+  });
+
+  it("keeps 'Software Developer' when description says 0–2 years", () => {
+    expect(
+      isExcluded(
+        job({
+          title: "Software Developer",
+          description: "Looking for someone with 0-2 years of experience.",
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("drops non-software junior titles", () => {
+    expect(
+      isExcluded(job({ title: "Junior Marketing Coordinator" }))
+    ).toBe(true);
   });
 
   it("drops jobs whose description gates on 5+ years", () => {
@@ -62,6 +86,7 @@ describe("excludeUnwanted", () => {
       job({ title: "Junior Software Developer" }),
       job({ title: "Senior Software Developer" }),
       job({ title: "Software Engineer I" }),
+      job({ title: "Software Developer" }), // dropped: no junior signal
     ];
     expect(excludeUnwanted(jobs)).toHaveLength(2);
   });

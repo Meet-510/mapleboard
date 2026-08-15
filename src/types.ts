@@ -26,6 +26,8 @@ export type RawJob = {
   employmentType?: EmploymentType;
 };
 
+export type Section = "neo" | "focus" | "tier2" | "general";
+
 export type NormalizedJob = {
   id: string; // sha256 dedupe hash
   source: SourceName;
@@ -33,6 +35,7 @@ export type NormalizedJob = {
   title: string;
   location: string;
   locationTier: LocationTier;
+  section: Section;
   url: string;
   description: string;
   datePosted: string | null; // ISO or null if unknown
@@ -41,7 +44,6 @@ export type NormalizedJob = {
   technologies: string[];
   matchScore: number; // 0..100
   scoreReasons: string[]; // human-readable "why it matches"
-  isMonitoredCompany: boolean;
   fallbackWindow: boolean; // true if kept only by the 48h fallback
 };
 

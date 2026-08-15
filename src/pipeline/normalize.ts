@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import type { NormalizedJob, RawJob, EmploymentType } from "../types.js";
 import { classifyLocation } from "../util/location.js";
 import { jobHash } from "../util/hash.js";
+import { classifySection } from "../util/section.js";
 
 function stripHtml(html: string): string {
   if (!html) return "";
@@ -38,14 +39,6 @@ function inferEmploymentType(
   return "full_time";
 }
 
-function isMonitored(company: string): boolean {
-  const c = company.toLowerCase();
-  return config.monitoredCompanies.some((m) => {
-    const ml = m.toLowerCase();
-    return c === ml || c.includes(ml);
-  });
-}
-
 /**
  * Convert RawJob → NormalizedJob. Drops jobs that:
  *   - lack a URL or title (unusable)
@@ -73,6 +66,7 @@ export function normalizeAll(raws: RawJob[]): NormalizedJob[] {
       title: r.title.trim(),
       location: r.location.trim(),
       locationTier: tier,
+      section: classifySection(r.company),
       url: r.url,
       description,
       datePosted: r.datePosted ?? null,
@@ -81,7 +75,6 @@ export function normalizeAll(raws: RawJob[]): NormalizedJob[] {
       technologies,
       matchScore: 0,
       scoreReasons: [],
-      isMonitoredCompany: isMonitored(r.company),
       fallbackWindow: false,
     });
   }

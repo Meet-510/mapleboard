@@ -11,7 +11,7 @@ import { JobDb } from "./db/client.js";
 import { renderEmail } from "./email/template.js";
 import { sendEmail } from "./email/send.js";
 import { log } from "./util/logger.js";
-import type { NormalizedJob, LocationTier } from "./types.js";
+import type { NormalizedJob, LocationTier, Section } from "./types.js";
 
 const TIER_ORDER: Record<LocationTier, number> = {
   alberta: 0,
@@ -19,17 +19,24 @@ const TIER_ORDER: Record<LocationTier, number> = {
   remote: 2,
 };
 
-function sortForEmail(jobs: NormalizedJob[]): NormalizedJob[] {
+// Section priority for the global cap: Neo and Focus must survive first,
+// then Tier 2, then General. Template renders sections in a different order
+// (Neo → Focus → General → Tier 2), but that's a display concern.
+const SECTION_CUT_ORDER: Record<Section, number> = {
+  neo: 0,
+  focus: 1,
+  tier2: 2,
+  general: 3,
+};
+
+function sortForCap(jobs: NormalizedJob[]): NormalizedJob[] {
   return [...jobs].sort((a, b) => {
+    if (a.section !== b.section) {
+      return SECTION_CUT_ORDER[a.section] - SECTION_CUT_ORDER[b.section];
+    }
     if (a.locationTier !== b.locationTier) {
       return TIER_ORDER[a.locationTier] - TIER_ORDER[b.locationTier];
     }
-    // Full-time before intern/contract within the same tier.
-    const rank = (t: NormalizedJob["employmentType"]) =>
-      t === "full_time" ? 0 : t === "contract" ? 1 : t === "intern" ? 2 : 3;
-    const ra = rank(a.employmentType);
-    const rb = rank(b.employmentType);
-    if (ra !== rb) return ra - rb;
     return b.matchScore - a.matchScore;
   });
 }
@@ -86,8 +93,9 @@ async function main(): Promise<number> {
   const verified = await verifyUrls(fresh_only);
   log.info("url-verified", { in: fresh_only.length, out: verified.length });
 
-  // 9. Sort and cap
-  const sorted = sortForEmail(verified);
+  // 9. Sort by section priority + cap. Neo and Focus always survive because
+  //    they sort before Tier 2 / General.
+  const sorted = sortForCap(verified);
   const capped = sorted.slice(0, config.email.maxJobs);
   if (sorted.length > config.email.maxJobs) {
     log.info("capped by maxJobs", { total: sorted.length, sent: capped.length });

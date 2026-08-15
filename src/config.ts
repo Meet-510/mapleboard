@@ -130,14 +130,38 @@ export const config = {
     allowRemoteCanada: true,
   },
 
-  monitoredCompanies: [
+  /**
+   * Focus companies — the smaller Canadian tech shops the owner most wants to
+   * work at. These get their own "Focus" email section and a +15 score bonus.
+   * Matched against `job.company` by case-insensitive substring, so entries
+   * here should be human display names (not slugs).
+   *
+   * Neo Financial is here AND lives in its own dedicated top section.
+   */
+  focusCompanies: [
     "Neo Financial",
+    "Benevity",
+    "Clio",
+    "Jobber",
+    "Absorb",
+    "ATB Financial",
+    "Helcim",
+    "AltaML",
+    "Xerris",
+    "ZayZoon",
+  ],
+
+  /**
+   * Tier-2 companies — larger enterprises the owner is also open to. Get their
+   * own "Tier 2" email section and a +10 score bonus. Coverage is best-effort
+   * via Adzuna (Indeed aggregator) since most of these use Workday/proprietary
+   * ATSes that don't expose a friendly per-company JSON API.
+   */
+  tier2Companies: [
     "RBC",
     "TD",
     "BMO",
-    "ATB Financial",
     "Shopify",
-    "Benevity",
     "Suncor",
     "Canadian Tire",
     "Amazon",
@@ -171,10 +195,15 @@ export const config = {
     { slug: "wealthsimple", name: "Wealthsimple" },
     { slug: "mistplay", name: "Mistplay" },
     { slug: "plusgrade", name: "Plusgrade" },
+    { slug: "altaml", name: "AltaML" },
   ] as CompanySource[],
 
   ashbyCompanies: [
     { slug: "neofinancial", name: "Neo Financial" },
+    { slug: "benevity", name: "Benevity" },
+    { slug: "jobber", name: "Jobber" },
+    { slug: "absorblms", name: "Absorb" },
+    { slug: "zayzoon", name: "ZayZoon" },
   ] as CompanySource[],
 
   /**
@@ -193,12 +222,16 @@ export const config = {
   workdayCompanies: [] as WorkdayCompany[],
 
   // Adzuna searches. Each entry is a keyword query for the CA endpoint.
+  // Kept narrow — every result is filtered again by our strict junior gate,
+  // so a broad "software developer" query would waste quota without helping.
   adzunaQueries: [
     "junior software developer",
     "junior software engineer",
     "entry level software developer",
     "new grad software",
     "software developer intern",
+    "associate software developer",
+    "graduate software engineer",
   ],
 
   freshness: {

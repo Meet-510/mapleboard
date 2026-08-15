@@ -1,5 +1,10 @@
-import type { NormalizedJob, LocationTier, EmploymentType } from "../types.js";
+import type {
+  NormalizedJob,
+  Section,
+  EmploymentType,
+} from "../types.js";
 import type { PriorityStatus } from "../pipeline/priority.js";
+import { config } from "../config.js";
 
 function esc(s: string): string {
   return s
@@ -10,7 +15,7 @@ function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function relativeAge(iso: string | null, now: Date = new Date()): string {
+function relativeAge(iso: string | null, now: Date): string {
   if (!iso) return "Posted date unknown";
   const posted = Date.parse(iso);
   if (Number.isNaN(posted)) return "Posted date unknown";
@@ -58,9 +63,6 @@ function jobCard(job: NormalizedJob, index: number, now: Date): string {
   const fallbackTag = job.fallbackWindow
     ? `<span style="background:#f59e0b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:6px;">48h fallback</span>`
     : "";
-  const monitoredTag = job.isMonitoredCompany
-    ? `<span style="background:#0ea5e9;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:6px;">Monitored</span>`
-    : "";
 
   return `
     <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:12px;background:#ffffff;">
@@ -68,7 +70,7 @@ function jobCard(job: NormalizedJob, index: number, now: Date): string {
         <div style="flex:1;min-width:0;">
           <div style="font-size:16px;font-weight:600;color:#0f172a;">
             ${index}. ${esc(job.title)}
-            ${fallbackTag}${monitoredTag}
+            ${fallbackTag}
           </div>
           <div style="color:#334155;font-size:14px;margin-top:2px;">
             ${esc(job.company)} · ${esc(job.location)}
@@ -95,88 +97,84 @@ function jobCard(job: NormalizedJob, index: number, now: Date): string {
   `.trim();
 }
 
-function section(title: string, jobs: NormalizedJob[], now: Date): string {
-  if (jobs.length === 0) return "";
-  const cards = jobs.map((j, i) => jobCard(j, i + 1, now)).join("\n");
-  return `
-    <div style="margin-top:28px;">
-      <div style="border-bottom:2px solid #dc2626;padding-bottom:6px;margin-bottom:16px;">
-        <h2 style="margin:0;color:#0f172a;font-size:18px;">${esc(title)} <span style="color:#94a3b8;font-weight:400;font-size:14px;">(${jobs.length})</span></h2>
-      </div>
-      ${cards}
-    </div>
-  `.trim();
-}
-
-export type Rendered = {
-  subject: string;
-  html: string;
-  text: string;
+type SectionMeta = {
+  key: Section;
+  title: string;
+  accent: string; // border colour
+  subtitle: string;
+  /** If the section is empty, show this note instead of hiding it. */
+  emptyNote?: string;
 };
 
-export function renderEmail(
-  jobs: NormalizedJob[],
-  now: Date = new Date(),
-  priority?: PriorityStatus
-): Rendered {
-  const dateStr = now.toISOString().slice(0, 10);
-  const buckets: Record<LocationTier, NormalizedJob[]> = {
-    alberta: jobs.filter((j) => j.locationTier === "alberta"),
-    canada: jobs.filter((j) => j.locationTier === "canada"),
-    remote: jobs.filter((j) => j.locationTier === "remote"),
-  };
-  const monitored = jobs.filter((j) => j.isMonitoredCompany);
+const SECTION_ORDER: SectionMeta[] = [
+  {
+    key: "neo",
+    title: "Neo Financial",
+    accent: "#dc2626",
+    subtitle: "Priority company — checked every scan.",
+    emptyNote:
+      "No new Neo Financial junior roles in this scan. See the priority banner above for the full board status.",
+  },
+  {
+    key: "focus",
+    title: "Focus Companies",
+    accent: "#0ea5e9",
+    subtitle: "The smaller Canadian tech shops on your target list.",
+    emptyNote: "No new junior postings from your focus companies this scan.",
+  },
+  {
+    key: "general",
+    title: "Rest of Canada",
+    accent: "#16a34a",
+    subtitle: "Everything else surfaced by the scan.",
+  },
+  {
+    key: "tier2",
+    title: "Tier 2 Companies",
+    accent: "#8b5cf6",
+    subtitle: "Larger enterprises you're also open to.",
+    emptyNote: "No new junior postings from tier-2 companies this scan.",
+  },
+];
 
-  if (jobs.length === 0) {
-    return renderEmpty(dateStr, now, priority);
-  }
+// Within a section, Alberta postings surface first.
+const TIER_ORDER = { alberta: 0, canada: 1, remote: 2 } as const;
 
-  const summary = `
-    <div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:20px;text-align:center;color:#334155;">
-      <div style="font-size:15px;">This scan found <strong>${jobs.length}</strong> new opportunities.</div>
-      <div style="margin-top:6px;font-size:13px;color:#64748b;">
-        Alberta: <strong>${buckets.alberta.length}</strong> ·
-        Rest of Canada: <strong>${buckets.canada.length}</strong> ·
-        Remote: <strong>${buckets.remote.length}</strong>
+function sortForSection(jobs: NormalizedJob[]): NormalizedJob[] {
+  return [...jobs].sort((a, b) => {
+    if (a.locationTier !== b.locationTier) {
+      return TIER_ORDER[a.locationTier] - TIER_ORDER[b.locationTier];
+    }
+    return b.matchScore - a.matchScore;
+  });
+}
+
+function sectionBlock(meta: SectionMeta, jobs: NormalizedJob[], now: Date): string {
+  const sorted = sortForSection(jobs);
+  const body =
+    sorted.length > 0
+      ? sorted.map((j, i) => jobCard(j, i + 1, now)).join("\n")
+      : meta.emptyNote
+        ? `<div style="color:#64748b;font-size:13px;padding:12px;background:#ffffff;border-radius:8px;border:1px dashed #cbd5e1;">${esc(meta.emptyNote)}</div>`
+        : "";
+  if (!body) return "";
+
+  return `
+    <div style="margin-top:28px;">
+      <div style="border-bottom:2px solid ${meta.accent};padding-bottom:6px;margin-bottom:8px;">
+        <h2 style="margin:0;color:#0f172a;font-size:18px;">
+          ${esc(meta.title)}
+          <span style="color:#94a3b8;font-weight:400;font-size:14px;">(${sorted.length})</span>
+        </h2>
       </div>
+      <div style="color:#64748b;font-size:12px;margin-bottom:12px;">${esc(meta.subtitle)}</div>
+      ${body}
     </div>
   `.trim();
-
-  const html = `
-    <div style="max-width:640px;margin:0 auto;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#f1f5f9;">
-      <div style="text-align:center;margin-bottom:12px;">
-        <h1 style="margin:0;color:#dc2626;font-size:24px;">MapleBoard</h1>
-        <div style="color:#64748b;font-size:13px;">Junior Developer Jobs · Canada · ${esc(dateStr)}</div>
-      </div>
-      ${priorityBanner(priority)}
-      ${summary}
-      ${section("Alberta", buckets.alberta, now)}
-      ${section("Rest of Canada", buckets.canada, now)}
-      ${section("Remote Canada", buckets.remote, now)}
-      ${
-        monitored.length > 0
-          ? section("Companies You Monitor", monitored, now)
-          : ""
-      }
-      <div style="text-align:center;margin-top:32px;color:#94a3b8;font-size:11px;">
-        Sent by MapleBoard · Sources: Greenhouse, Lever, Ashby, Workday, Adzuna
-      </div>
-    </div>
-  `.trim();
-
-  const text = renderText(jobs, buckets, dateStr, now, priority);
-
-  return {
-    subject: `Daily Junior Developer Jobs — Canada — ${dateStr} (${jobs.length})`,
-    html,
-    text,
-  };
 }
 
 function priorityBanner(p?: PriorityStatus): string {
   if (!p) return "";
-  // Colour reflects state: red on fetch failure, green on new roles, amber on
-  // "openings but nothing junior", grey for the quiet-day baseline.
   const bg = !p.fetchOk
     ? "#fee2e2"
     : p.newInThisEmail > 0
@@ -199,29 +197,88 @@ function priorityBanner(p?: PriorityStatus): string {
   `.trim();
 }
 
+export type Rendered = {
+  subject: string;
+  html: string;
+  text: string;
+};
+
+export function renderEmail(
+  jobs: NormalizedJob[],
+  now: Date = new Date(),
+  priority?: PriorityStatus
+): Rendered {
+  const dateStr = now.toISOString().slice(0, 10);
+  const bySection: Record<Section, NormalizedJob[]> = {
+    neo: jobs.filter((j) => j.section === "neo"),
+    focus: jobs.filter((j) => j.section === "focus"),
+    tier2: jobs.filter((j) => j.section === "tier2"),
+    general: jobs.filter((j) => j.section === "general"),
+  };
+
+  const summary = `
+    <div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:20px;text-align:center;color:#334155;">
+      <div style="font-size:15px;">This scan surfaced <strong>${jobs.length}</strong> junior role${jobs.length === 1 ? "" : "s"}.</div>
+      <div style="margin-top:6px;font-size:13px;color:#64748b;">
+        Neo: <strong>${bySection.neo.length}</strong> ·
+        Focus: <strong>${bySection.focus.length}</strong> ·
+        Rest of Canada: <strong>${bySection.general.length}</strong> ·
+        Tier 2: <strong>${bySection.tier2.length}</strong>
+      </div>
+    </div>
+  `.trim();
+
+  const html = `
+    <div style="max-width:640px;margin:0 auto;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#f1f5f9;">
+      <div style="text-align:center;margin-bottom:12px;">
+        <h1 style="margin:0;color:#dc2626;font-size:24px;">MapleBoard</h1>
+        <div style="color:#64748b;font-size:13px;">Junior Developer Jobs · Canada · ${esc(dateStr)}</div>
+      </div>
+      ${priorityBanner(priority)}
+      ${summary}
+      ${SECTION_ORDER.map((meta) => sectionBlock(meta, bySection[meta.key], now)).join("\n")}
+      <div style="text-align:center;margin-top:32px;color:#94a3b8;font-size:11px;">
+        Sent by MapleBoard · Sources: Greenhouse, Lever, Ashby, Workday, Adzuna
+      </div>
+    </div>
+  `.trim();
+
+  const text = renderText(jobs, bySection, dateStr, now, priority);
+
+  const subjectCount =
+    jobs.length === 0 ? "no new jobs" : `${jobs.length}`;
+  return {
+    subject: `${config.email.subjectPrefix} — ${dateStr} (${subjectCount})`,
+    html,
+    text,
+  };
+}
+
 function renderText(
   jobs: NormalizedJob[],
-  buckets: Record<LocationTier, NormalizedJob[]>,
+  bySection: Record<Section, NormalizedJob[]>,
   dateStr: string,
   now: Date,
   priority?: PriorityStatus
 ): string {
   const lines: string[] = [
-    `MapleBoard — Daily Junior Developer Jobs — Canada — ${dateStr}`,
+    `MapleBoard — Junior Developer Jobs — Canada — ${dateStr}`,
     ``,
   ];
-  if (priority) {
-    lines.push(`Priority: ${priority.message}`, ``);
-  }
+  if (priority) lines.push(`Priority: ${priority.message}`, ``);
   lines.push(
-    `Found ${jobs.length} new opportunities.`,
-    `Alberta: ${buckets.alberta.length} | Rest of Canada: ${buckets.canada.length} | Remote: ${buckets.remote.length}`,
+    `Total: ${jobs.length} · Neo: ${bySection.neo.length} · Focus: ${bySection.focus.length} · Rest of Canada: ${bySection.general.length} · Tier 2: ${bySection.tier2.length}`,
     ``
   );
-  const addSection = (title: string, rows: NormalizedJob[]) => {
-    if (rows.length === 0) return;
-    lines.push(`--- ${title.toUpperCase()} (${rows.length}) ---`);
-    rows.forEach((j, i) => {
+
+  for (const meta of SECTION_ORDER) {
+    const sorted = sortForSection(bySection[meta.key]);
+    lines.push(`--- ${meta.title.toUpperCase()} (${sorted.length}) ---`);
+    if (sorted.length === 0) {
+      lines.push(meta.emptyNote ?? "(none)", "");
+      continue;
+    }
+    sorted.forEach((j, i) => {
       lines.push(
         `${i + 1}. ${j.title}  [${j.matchScore}%]`,
         `   ${j.company} · ${j.location}`,
@@ -233,33 +290,7 @@ function renderText(
         ""
       );
     });
-  };
-  addSection("Alberta", buckets.alberta);
-  addSection("Rest of Canada", buckets.canada);
-  addSection("Remote Canada", buckets.remote);
-  return lines.filter((l) => l !== undefined).join("\n");
-}
+  }
 
-function renderEmpty(dateStr: string, now: Date, priority?: PriorityStatus): Rendered {
-  const html = `
-    <div style="max-width:640px;margin:0 auto;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#f1f5f9;">
-      <div style="text-align:center;">
-        <h1 style="color:#dc2626;margin:0;font-size:22px;">MapleBoard</h1>
-        <div style="color:#64748b;font-size:13px;margin-top:4px;">${esc(dateStr)}</div>
-      </div>
-      ${priorityBanner(priority)}
-      <div style="text-align:center;margin-top:24px;color:#334155;font-size:15px;">
-        No new junior developer jobs matched this scan.
-      </div>
-      <div style="text-align:center;margin-top:8px;color:#94a3b8;font-size:12px;">
-        The scan ran successfully — sources returned nothing new in the last 24–48h window.
-      </div>
-    </div>
-  `.trim();
-  const priorityLine = priority ? `Priority: ${priority.message}\n\n` : "";
-  return {
-    subject: `Daily Junior Developer Jobs — Canada — ${dateStr} (no new jobs)`,
-    html,
-    text: `MapleBoard — ${dateStr}\n\n${priorityLine}No new junior developer jobs matched this scan. Sources returned nothing new in the last 24–48h window.\n\n(Now: ${now.toISOString()})`,
-  };
+  return lines.filter((l) => l !== undefined).join("\n");
 }

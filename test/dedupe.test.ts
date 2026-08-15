@@ -18,7 +18,7 @@ function job(overrides: Partial<NormalizedJob>): NormalizedJob {
     technologies: [],
     matchScore: 0,
     scoreReasons: [],
-    isMonitoredCompany: false,
+    section: "general",
     fallbackWindow: false,
     ...overrides,
   };

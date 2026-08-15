@@ -47,9 +47,12 @@ export function scoreJob(job: NormalizedJob, now: Date = new Date()): Normalized
     reasons.push("full-stack");
   }
 
-  if (job.isMonitoredCompany) {
+  if (job.section === "neo" || job.section === "focus") {
+    score += 15;
+    reasons.push("focus company");
+  } else if (job.section === "tier2") {
     score += 10;
-    reasons.push("monitored company");
+    reasons.push("tier-2 company");
   }
 
   if (job.datePosted) {
